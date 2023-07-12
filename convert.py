@@ -9,6 +9,7 @@
 
 import json
 import numpy as np
+import os
 
 from netCDF4 import Dataset
 
@@ -20,7 +21,7 @@ class Variable:
         self.offsets = []
         self.keys = []
 
-    def update(key, segments):
+    def update(self,key, segments):
         # Update arrays with new attributes
         self.keys.append(key)
         self.files.append(segments[0])
@@ -33,7 +34,13 @@ class Converter:
         self.store = os.path.join(outpath, kfile.split('/')[-1].replace('.json',''))
         self.metadata = {}
 
-    def deconstruct(refs):
+    def get_kfile(self):
+        f = open(self.kfile,'r')
+        refs = json.load(f)
+        f.close()
+        return refs
+
+    def deconstruct(self,refs):
 
         # Setup metadata dict
         keywords = ['lat','lon','.zarray','zgroup','.zattrs']
@@ -59,18 +66,24 @@ class Converter:
             except ValueError:
                 self.metadata['refs'][key] = refs['refs'][key] 
     
-    def make_store():
+    def make_store(self):
         if not os.path.isdir(self.store):
             os.makedirs(self.store)
 
-    def write_meta():
+    def write_meta(self):
         meta = os.path.join(self.store, 'meta.json' )
         if not os.path.isfile(meta):
             os.system(f'touch {meta}')
         f = open(meta, 'w')
+        f.write(json.dumps(self.metadata))
+        f.close()
 
-    def write_ncs():
+    def write_ncs(self):
         pass
 
-    def process():
-        pass
+    def process(self):
+        self.make_store()
+        refs = self.get_kfile()
+        self.deconstruct(refs)
+        self.write_meta()
+        self.write_ncs()
