@@ -12,21 +12,74 @@ import numpy as np
 import os
 
 from netCDF4 import Dataset
+from scipy import stats
 
 class Variable:
-    def __init__(self, var):
+    def __init__(self, var, store):
         self.var = var
+        self.store = store
         self.files = []
         self.sizes = []
         self.offsets = []
         self.keys = []
+        self.fileids = []
+        self.fcounter = 0
+        self.latestfile = None
 
     def update(self,key, segments):
         # Update arrays with new attributes
+        if segments[0] != self.latestfile:
+            self.files.append(segments[0])
+            self.fileids.append(self.fcounter)
+            self.latestfile = segments[0]
+        else:
+            self.fcounter += 1
         self.keys.append(key)
-        self.files.append(segments[0])
         self.sizes.append(segments[1])
         self.offsets.append(segments[2])
+
+    def pack_gen(self):
+        sizes = np.array(self.sizes,dtype=int)
+        offsets = np.array(self.offsets,dtype=int)
+        
+        meansize = int(stats.mode(sizes).mode)
+        meanoffset = int(stats.mode(offsets).mode)
+
+        self.uniquelengths = sizes[sizes != meansize]
+        self.uniqueids = np.arange(0,len(sizes))[sizes != meansize]
+
+        self.gaplengths = offsets[offsets != meanoffset]
+        self.gapids = np.arange(0,len(offsets))[offsets != meanoffset]
+
+        del sizes
+        del offsets
+        del self.sizes
+        del self.offsets
+
+
+        # Get uniqueids, uniquelengths
+        # Get gapids, gaplengths
+
+    def write_nc(self):
+        ncfile = f'{self.store}/{self.var}.nc'
+        ncf_new = Dataset(ncfile, 'w', format='NETCDF4')
+
+        unique_dim = ncf_new.createDimension('unique_dim',len(self.uniqueids))
+        keys_dim = ncf_new.createDimension('keys_dim',len(self.keys))
+        gaps_dim = ncf_new.createDimension('gaps_dim',len(self.gapids))
+
+        unique_ids = ncf_new.createVariable('unique_ids', np.int32, ('unique_dim',))
+        unique_ids[:] = self.uniqueids
+        unique_lens = ncf_new.createVariable('unique_lengths', np.int32, ('unique_dim',))
+        unique_lens[:] = self.uniquelengths
+
+        gap_ids = ncf_new.createVariable('gap_ids', np.int32, ('gaps_dim',))
+        gap_ids[:] = self.gapids
+        gap_lens = ncf_new.createVariable('gap_lengths', np.int32, ('gaps_dim',))
+        gap_lens[:] = self.gaplengths
+
+        keys = ncf_new.createVariable('keys', np.str_, ('keys_dim',))
+        keys[:] = np.array(self.keys)
 
 class Converter:
     def __init__(self,kfile, outpath):
@@ -43,7 +96,7 @@ class Converter:
     def deconstruct(self,refs):
 
         # Setup metadata dict
-        keywords = ['lat','lon','.zarray','zgroup','.zattrs']
+        keywords = ['time','lat','lon','.zarray','zgroup','.zattrs']
         for key in refs.keys():
             if key == 'refs':
                 self.metadata[key] = {}
@@ -58,9 +111,11 @@ class Converter:
                 if firstpart in keywords or secondpart[0] == '.':
                     self.metadata['refs'][key] = refs['refs'][key]
                 else:
+                    #print(firstpart, secondpart)
+                    #x=input()
                     variable = firstpart
                     if variable not in self.vars:
-                        self.vars[variable] = Variable(variable)
+                        self.vars[variable] = Variable(variable, self.store)
                     self.vars[variable].update(secondpart, refs['refs'][key])
 
             except ValueError:
@@ -79,7 +134,9 @@ class Converter:
         f.close()
 
     def write_ncs(self):
-        pass
+        for var in self.vars.keys():
+            self.vars[var].pack_gen()
+            self.vars[var].write_nc()
 
     def process(self):
         self.make_store()
