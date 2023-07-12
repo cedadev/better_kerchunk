@@ -1,0 +1,12 @@
+--------------------------------
+ Commenced = Wed Jul 12 15:38:44 2023 
+ Author    = Daniel Westwood <daniel.westwood@stfc.ac.uk>
+ Command   = /home/users/dwest77/.fair/data/jobs/2023-07-12_15_38_44_505910/script.sh
+--------------------------------
+Traceback (most recent call last):
+  File "/home/users/dwest77/Documents/kerchunk_dev/better_kerchunk/test_convert.py", line 1, in <module>
+    from convert import Converter, Variable
+  File "/home/users/dwest77/Documents/kerchunk_dev/better_kerchunk/convert.py", line 15, in <module>
+    from scipy import stats
+ModuleNotFoundError: No module named 'scipy'
+------- time taken 0:00:01.022771 -------

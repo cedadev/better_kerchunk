@@ -1,0 +1,19 @@
+git:
+  local_repo: /home/users/dwest77/Documents/kerchunk_dev/better_kerchunk
+  remote: origin
+  remote_repo: https://github.com/cedadev/better_kerchunk.git
+namespaces:
+  input: dwest77a
+  output: dwest77a
+registries:
+  origin:
+    data_store: https://data.fairdatapipeline.org/data/
+    token: /home/users/dwest77/.fair/cli/remotetoken.txt
+    uri: https://data.fairdatapipeline.org/api/
+user:
+  email: daniel.westwood@stfc.ac.uk
+  family_name: Westwood
+  github: dwest77a
+  given_names: Daniel
+  name: Daniel Westwood
+  uri: https://github.com/dwest77a
