@@ -37,7 +37,6 @@ class Variable:
     def update(self,key, segments):
         # Update arrays with new attributes
         if segments[0] != self.latestfile:
-            self.files.append(segments[0])
             self.fileids.append(self.fcounter)
             self.latestfile = segments[0]
         else:
@@ -46,18 +45,35 @@ class Variable:
         self.sizes.append(segments[1])
         self.offsets.append(segments[2])
 
+    def get_entry(self):
+        return [self.chunks, self.msize, self.moffset]
+
+    def unpack_gen(self):
+        # Assume we've already collected the json/netcdf contents
+        # Also assume we have the file arrays and everything
+        sizes = np.zeros(self.chunks) + self.msize
+        offsets = np.zeros(self.chunks) + self.moffset
+        files = np.zeros(self.chunks)
+        keys = self.keys
+        init = 0
+        for x, f in enumerate(self.files):
+            files[init:self.fileids[x]] = f
+        
+
+
     def pack_gen(self):
+        self.chunks = len(self.sizes)
         sizes = np.array(self.sizes,dtype=int)
         offsets = np.array(self.offsets,dtype=int)
         
-        meansize = int(stats.mode(sizes).mode)
-        meanoffset = int(stats.mode(offsets).mode)
+        self.msize = int(stats.mode(sizes).mode)
+        self.moffset = int(stats.mode(offsets).mode)
 
-        self.uniquelengths = sizes[sizes != meansize]
-        self.uniqueids = np.arange(0,len(sizes))[sizes != meansize]
+        self.uniquelengths = sizes[sizes != self.msize]
+        self.uniqueids = np.arange(0,len(sizes))[sizes != self.msize]
 
-        self.gaplengths = offsets[offsets != meanoffset]
-        self.gapids = np.arange(0,len(offsets))[offsets != meanoffset]
+        self.gaplengths = offsets[offsets != self.moffset]
+        self.gapids = np.arange(0,len(offsets))[offsets != self.moffset]
 
         del sizes
         del offsets
@@ -96,7 +112,8 @@ class Variable:
             'unique_lengths':self.uniquelengths,
             'gap_ids':self.gapids,
             'gap_lengths':self.gaplengths,
-            'keys':self.keys
+            'keys':self.keys,
+            'fileids':self.fileids,
         }
         f = open(jsfile,'w')
         f.write(json.dumps(refs, cls=NumpyArrayEncoder))
@@ -109,6 +126,7 @@ class Converter:
         self.kfile = kfile
         self.store = os.path.join(outpath, kfile.split('/')[-1].replace('.json',''))
         self.metadata = {}
+        self.generator = {}
 
     def get_kfile(self):
         f = open(self.kfile,'r')
@@ -128,6 +146,7 @@ class Converter:
         
         # Setup vars dict
         self.vars = {}
+        self.files = ['']
         for key in refs['refs'].keys():
             try:
                 firstpart, secondpart = key.split('/')
@@ -140,6 +159,8 @@ class Converter:
                     if variable not in self.vars:
                         self.vars[variable] = Variable(variable, self.store)
                     self.vars[variable].update(secondpart, refs['refs'][key])
+                    if refs['refs'][key][0] != self.files[-1]:
+                        self.files.append(refs['refs'][key][0])
 
             except ValueError:
                 self.metadata['refs'][key] = refs['refs'][key] 
@@ -150,6 +171,8 @@ class Converter:
 
     def write_meta(self):
         meta = os.path.join(self.store, 'meta.json' )
+        self.metadata['vars'] = self.generator
+        self.metadata['files'] = self.files[1:]
         if not os.path.isfile(meta):
             os.system(f'touch {meta}')
         f = open(meta, 'w')
@@ -157,13 +180,15 @@ class Converter:
         f.close()
 
     def write_ncs(self):
-        for var in self.vars.keys():
-            self.vars[var].pack_gen()
-            self.vars[var].write_json()
+        for var in self.vars.values():
+            var.pack_gen()
+            var.write_json()
+            entry = var.get_entry()
+            self.generator[var.var] = entry
 
     def process(self):
         self.make_store()
         refs = self.get_kfile()
         self.deconstruct(refs)
-        self.write_meta()
         self.write_ncs()
+        self.write_meta()
