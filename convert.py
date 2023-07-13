@@ -14,6 +14,14 @@ import os
 from netCDF4 import Dataset
 from scipy import stats
 
+from json import JSONEncoder
+
+class NumpyArrayEncoder(JSONEncoder):
+    def default(self,obj):
+        if isinstance(obj,np.ndarray):
+            return obj.tolist()
+        return JSONEncoder.default(self,obj)
+
 class Variable:
     def __init__(self, var, store):
         self.var = var
@@ -81,6 +89,21 @@ class Variable:
         keys = ncf_new.createVariable('keys', np.str_, ('keys_dim',))
         keys[:] = np.array(self.keys)
 
+    def write_json(self):
+        jsfile = f'{self.store}/{self.var}.json'
+        refs = {
+            'unique_ids':self.uniqueids,
+            'unique_lengths':self.uniquelengths,
+            'gap_ids':self.gapids,
+            'gap_lengths':self.gaplengths,
+            'keys':self.keys
+        }
+        f = open(jsfile,'w')
+        f.write(json.dumps(refs, cls=NumpyArrayEncoder))
+        f.close()
+
+
+
 class Converter:
     def __init__(self,kfile, outpath):
         self.kfile = kfile
@@ -136,7 +159,7 @@ class Converter:
     def write_ncs(self):
         for var in self.vars.keys():
             self.vars[var].pack_gen()
-            self.vars[var].write_nc()
+            self.vars[var].write_json()
 
     def process(self):
         self.make_store()
