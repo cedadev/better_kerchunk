@@ -1,0 +1,12 @@
+--------------------------------
+ Commenced = Wed Jul 12 16:06:34 2023 
+ Author    = Daniel Westwood <dwest77a@users.noreply.github.com>
+ Command   = /home/dwest77/.fair/data/jobs/2023-07-12_16_06_34_703562/script.sh
+--------------------------------
+Traceback (most recent call last):
+  File "/home/dwest77/Documents/better_kerchunk/test_convert.py", line 1, in <module>
+    from convert import Converter, Variable
+  File "/home/dwest77/Documents/better_kerchunk/convert.py", line 14, in <module>
+    from netCDF4 import Dataset
+ModuleNotFoundError: No module named 'netCDF4'
+------- time taken 0:00:00.433715 -------

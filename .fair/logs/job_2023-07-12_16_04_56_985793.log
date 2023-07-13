@@ -1,0 +1,7 @@
+--------------------------------
+ Commenced = Wed Jul 12 16:04:56 2023 
+ Author    = Daniel Westwood <dwest77a@users.noreply.github.com>
+ Command   = /home/dwest77/.fair/data/jobs/2023-07-12_16_04_56_985793/script.sh
+--------------------------------
+/home/dwest77/.fair/data/jobs/2023-07-12_16_04_56_985793/script.sh: line 1: /home/dwest77/venvs/bkvenv/bin/python3.10: No such file or directory
+------- time taken 0:00:00.141348 -------
