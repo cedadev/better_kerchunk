@@ -16,6 +16,19 @@ from scipy import stats
 
 from json import JSONEncoder
 
+ERRORS = {
+    "File": "[FileError]"
+}
+
+VERBOSE=True
+
+def vprint(msg, err=None):
+    if VERBOSE:
+        status = '[INFO]'
+        if err:
+            status = ERRORS[err]
+        print(f'{status}: {msg}')
+
 class NumpyArrayEncoder(JSONEncoder):
     def default(self,obj):
         if isinstance(obj,np.ndarray):
@@ -34,13 +47,18 @@ class Variable:
         self.fcounter = 0
         self.latestfile = None
 
-    def update(self,key, segments):
+    def configure(self, chunks, msize, moffset, fileset):
+        self.chunks = chunks
+        self.msize = msize
+        self.moffset = moffset
+        self.fileset = fileset
+
+    def update(self, key, segments):
         # Update arrays with new attributes
         if segments[0] != self.latestfile:
             self.fileids.append(self.fcounter)
             self.latestfile = segments[0]
-        else:
-            self.fcounter += 1
+        self.fcounter += 1
         self.keys.append(key)
         self.sizes.append(segments[1])
         self.offsets.append(segments[2])
@@ -48,20 +66,60 @@ class Variable:
     def get_entry(self):
         return [self.chunks, self.msize, self.moffset]
 
+    def read_entry(self):
+        jsfile = f'{self.store}/{self.var}.json'
+        f = open(jsfile,'r')
+        refs = json.load(f)
+        f.close()
+        return refs
+
     def unpack_gen(self):
+
+        refs = self.read_entry()
+        uniqueids     = np.array(refs['unique_ids'], dtype=int)
+        uniquelengths = np.array(refs['unique_lengths'], dtype=int)
+
+        gapids        = np.array(refs['gap_ids'],dtype=int)
+        gaplengths    = np.array(refs['gap_lengths'],dtype=int)
+
+        keys = refs['keys']
+        fileids = refs['fileids']
+
         # Assume we've already collected the json/netcdf contents
         # Also assume we have the file arrays and everything
-        sizes = np.zeros(self.chunks) + self.msize
-        offsets = np.zeros(self.chunks) + self.moffset
-        files = np.zeros(self.chunks)
-        keys = self.keys
+        sizes   = np.zeros(self.chunks, dtype=int) + self.msize
+        files   = []
+        gaps    = np.zeros(self.chunks, dtype=int)
+
+        # Extract file list
         init = 0
-        for x, f in enumerate(self.files):
-            files[init:self.fileids[x]] = f
+        for x, f in enumerate(self.fileset):
+            for y in range(init, fileids[x]):
+                files.append(f)
+            # files[init:fileids[x]] = f
+            init = fileids[x]
+
+        # Get sizes
+        sizes[uniqueids] = uniquelengths
+
+        # Sort gap offsets
+        gaps[gapids] = gaplengths
+        unique_offs = np.cumsum(sizes)
+        offsets = np.cumsum(gaps) + unique_offs
+        offsets = np.roll(offsets, 1)
+        # Sizes and Offsets are the wrong way around...
+        offsets[0] = 0
+        offsets += self.moffset
+
+        chunk_array = np.reshape(np.transpose([files, np.array(sizes,dtype=int), np.array(offsets, dtype=int)]), (self.chunks, 3))
+        unpacked_refs = {}
+        for c in range(self.chunks):
+            unpacked_refs[f'{self.var}/{keys[c]}'] = list(chunk_array[c])
+
+        return unpacked_refs
         
-
-
     def pack_gen(self):
+        vprint(f'Packing {self.var}')
         self.chunks = len(self.sizes)
         sizes = np.array(self.sizes,dtype=int)
         offsets = np.array(self.offsets,dtype=int)
@@ -107,17 +165,19 @@ class Variable:
 
     def write_json(self):
         jsfile = f'{self.store}/{self.var}.json'
+        self.fileids.append(self.fcounter)
         refs = {
             'unique_ids':self.uniqueids,
             'unique_lengths':self.uniquelengths,
             'gap_ids':self.gapids,
             'gap_lengths':self.gaplengths,
             'keys':self.keys,
-            'fileids':self.fileids,
+            'fileids':self.fileids[1:],
         }
         f = open(jsfile,'w')
         f.write(json.dumps(refs, cls=NumpyArrayEncoder))
         f.close()
+        vprint(f'Written json {jsfile}')
 
 
 
@@ -127,6 +187,7 @@ class Converter:
         self.store = os.path.join(outpath, kfile.split('/')[-1].replace('.json',''))
         self.metadata = {}
         self.generator = {}
+        self.vars = {}
 
     def get_kfile(self):
         f = open(self.kfile,'r')
@@ -145,12 +206,11 @@ class Converter:
                 self.metadata[key] = refs[key]
         
         # Setup vars dict
-        self.vars = {}
         self.files = ['']
         for key in refs['refs'].keys():
             try:
                 firstpart, secondpart = key.split('/')
-                if firstpart in keywords or secondpart[0] == '.':
+                if firstpart in keywords or secondpart[0] == '.' or len(refs['refs'][key]) > 3:
                     self.metadata['refs'][key] = refs['refs'][key]
                 else:
                     #print(firstpart, secondpart)
@@ -166,10 +226,12 @@ class Converter:
                 self.metadata['refs'][key] = refs['refs'][key] 
     
     def make_store(self):
+        vprint('Ensuring store exists')
         if not os.path.isdir(self.store):
             os.makedirs(self.store)
 
     def write_meta(self):
+        vprint('Writing metadata')
         meta = os.path.join(self.store, 'meta.json' )
         self.metadata['vars'] = self.generator
         self.metadata['files'] = self.files[1:]
@@ -179,16 +241,58 @@ class Converter:
         f.write(json.dumps(self.metadata))
         f.close()
 
-    def write_ncs(self):
+    def read_meta(self):
+        meta = os.path.join(self.store, 'meta.json' )
+        f = open(meta,'r')
+        meta = json.load(f)
+        f.close()
+
+        self.metadata = {
+            'version': meta['version'],
+            'refs':meta['refs']
+        }
+
+        for var in meta['vars'].keys():
+            self.vars[var] = Variable(var, self.store)
+            self.vars[var].configure(*meta['vars'][var], meta['files'])
+
+    def write_vars(self):
+        vprint('Writing variables')
         for var in self.vars.values():
             var.pack_gen()
             var.write_json()
             entry = var.get_entry()
             self.generator[var.var] = entry
 
+    def read_vars(self):
+        vprint('Reading variables')
+        refs = {}
+        for var in self.vars.values():
+            refs = {**refs, **var.unpack_gen()}
+        return refs
+
+    def construct(self):
+        vprint('Merging and constructing')
+        refs = self.read_vars()
+        self.metadata['refs'] = {**self.metadata['refs'], **refs}
+
     def process(self):
         self.make_store()
         refs = self.get_kfile()
         self.deconstruct(refs)
-        self.write_ncs()
+        self.write_vars()
         self.write_meta()
+        vprint('Success')
+
+    def cache_construct(self):
+        f = open(self.kfile.replace('.json','_rec.json'),'w')
+        f.write(json.dumps(self.metadata, cls=NumpyArrayEncoder))
+        f.close()
+
+    def load(self, cache=None):
+        self.read_meta()
+        self.construct()
+        vprint('Success')
+        if cache:
+            self.cache_construct()
+        return self.metadata
