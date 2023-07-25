@@ -184,7 +184,7 @@ class Variable:
 class Converter:
     def __init__(self,kfile, outpath):
         self.kfile = kfile
-        self.store = os.path.join(outpath, kfile.split('/')[-1].replace('.json',''))
+        self.store = os.path.join(outpath, kfile.split('/')[-1].replace('.json','')) + '.kst'
         self.metadata = {}
         self.generator = {}
         self.vars = {}
@@ -289,10 +289,31 @@ class Converter:
         f.write(json.dumps(self.metadata, cls=NumpyArrayEncoder))
         f.close()
 
-    def load(self, cache=None):
+    def verify_meta(self):
+        original = self.get_kfile()
+        translated = self.metadata
+        outcount = 0
+        for key in original.keys():
+            if key != 'refs':
+                if translated[key] == original[key]:
+                    outcount += 1
+            else:
+                outcount += 1
+        vprint(f'Metadata Accuracy: {outcount*100/len(original.keys()):.1f} %')
+
+        incount = 0
+        for key in original['refs'].keys():
+            if translated['refs'][key] == original['refs'][key]:
+                incount += 1
+        vprint(f'Refs Accuracy: {incount*100/len(original["refs"].keys()):.1f} %')
+
+
+    def load(self, cache=None, verify=None):
         self.read_meta()
         self.construct()
         vprint('Success')
         if cache:
             self.cache_construct()
+        if verify:
+            self.verify_meta()
         return self.metadata
