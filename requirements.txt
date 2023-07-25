@@ -4,7 +4,7 @@ fasteners==0.18
 fsspec==2023.6.0
 kerchunk==0.1.2
 numcodecs==0.11.0
-numpy==1.25.1
+numpy==1.23.5
 packaging==23.1
 pandas==2.0.3
 python-dateutil==2.8.2
