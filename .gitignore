@@ -1,3 +1,5 @@
 .ipynb_checkpoints/
 kstore/*
 __pycache__/
+kc-indexes/
+kfiles/*
