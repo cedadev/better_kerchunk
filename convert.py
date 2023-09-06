@@ -60,8 +60,8 @@ class Variable:
             self.latestfile = segments[0]
         self.fcounter += 1
         self.keys.append(key)
-        self.sizes.append(segments[1])
-        self.offsets.append(segments[2])
+        self.offsets.append(segments[1])
+        self.sizes.append(segments[2])
 
     def get_entry(self):
         return [self.chunks, self.msize, self.moffset]
@@ -89,29 +89,22 @@ class Variable:
         # Also assume we have the file arrays and everything
         sizes   = np.zeros(self.chunks, dtype=int) + self.msize
         files   = []
-        gaps    = np.zeros(self.chunks, dtype=int)
+        offsets = np.zeros(self.chunks, dtype=int) + self.moffset
 
         # Extract file list
         init = 0
         for x, f in enumerate(self.fileset):
             for y in range(init, fileids[x]):
                 files.append(f)
-            # files[init:fileids[x]] = f
             init = fileids[x]
 
         # Get sizes
         sizes[uniqueids] = uniquelengths
+        offsets[gapids] = gaplengths
 
-        # Sort gap offsets
-        gaps[gapids] = gaplengths
-        unique_offs = np.cumsum(sizes)
-        offsets = np.cumsum(gaps) + unique_offs
-        offsets = np.roll(offsets, 1)
-        # Sizes and Offsets are the wrong way around...
-        offsets[0] = 0
-        offsets += self.moffset
+        # Offsets currently reversed
 
-        chunk_array = np.reshape(np.transpose([files, np.array(sizes,dtype=int), np.array(offsets, dtype=int)]), (self.chunks, 3))
+        chunk_array = np.reshape(np.transpose([files, np.array(offsets,dtype=int), np.array(sizes, dtype=int)]), (self.chunks, 3))
         unpacked_refs = {}
         for c in range(self.chunks):
             unpacked_refs[f'{self.var}/{keys[c]}'] = list(chunk_array[c])
@@ -290,6 +283,7 @@ class Converter:
         f.close()
 
     def verify_meta(self):
+        vprint('Attempting Verification')
         original = self.get_kfile()
         translated = self.metadata
         outcount = 0
@@ -303,7 +297,9 @@ class Converter:
 
         incount = 0
         for key in original['refs'].keys():
-            if translated['refs'][key] == original['refs'][key]:
+            p1 = str(translated['refs'][key][1]) == str(original['refs'][key][1])
+            p2 = str(translated['refs'][key][2]) == str(original['refs'][key][2])
+            if p1 and p2:
                 incount += 1
         vprint(f'Refs Accuracy: {incount*100/len(original["refs"].keys()):.1f} %')
 
